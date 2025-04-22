@@ -44,7 +44,7 @@ Compatible Water Boiler Heater (Affiliate Links):
 
 
 * 115mm Flange 15kW: https://s.click.aliexpress.com/e/_omHiJJP
-* 
+
 
 If you need another flange and you are not sure if it has the correct configuration just ask me via email.
 
