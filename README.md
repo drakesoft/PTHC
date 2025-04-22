@@ -30,7 +30,7 @@ To calculate the possible power levels for your heating element, please checkout
 
 ## Purchase Components and support my work
 
-For purchasing components and kits, visit www.draketronic.de. They offer a variety of parts that are compatible with this project.
+For purchasing components and kits, visit my shop www.draketronic.de.
 
 Compatible Water Boiler Heater (Affiliate Links):
 
