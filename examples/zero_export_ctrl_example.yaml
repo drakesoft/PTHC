@@ -1,0 +1,259 @@
+esphome:
+  name: pthc
+  platform: ESP32
+  board: esp32dev
+
+external_components:    
+  - source:
+      type: git
+      url: https://github.com/drakesoft/PTHC
+    components: [pthc_float_output]
+
+logger:
+    baud_rate: 0
+    level: DEBUG
+    logs:
+      sensor: ERROR
+
+api:
+  reboot_timeout: 0s
+  encryption:
+    key: "YOUR_KEY"
+
+ota:
+  - platform: esphome
+    password: "YOUR_PWD"
+
+wifi:
+  ssid: "YOUR_SSID"
+  password: "YOUR_PWD"
+
+  
+one_wire:
+  - platform: gpio
+    pin: GPIO23
+    
+web_server:
+  port: 80
+  include_internal: true    
+    
+udp:
+
+sensor:
+  - platform: dallas_temp
+    id: temperature
+    name: temperature
+    update_interval: 60s  
+    on_value:
+        - script.execute:
+            id: ctrlLoop     
+    
+#Get the current meter value from another ESP32 in this case    
+  - platform: udp
+    provider: szb
+    id: esp_pwr_combi 
+    on_value:
+        - script.execute:
+            id: ctrlLoop   
+            
+  - platform: template
+    name: "Current Power"
+    lambda: |-
+      return id(pthc_output).get_current_pwr();
+    update_interval: 1s            
+  
+  
+output:
+  - platform: pthc_float_output
+    id: pthc_output
+    max_pwr: 15000 #Set your max. heater output power
+    
+
+number:
+  - platform: template
+    id: lowTempMinPwrLvl
+    name: Minimum power Level for low temperature heating
+    min_value: 0
+    max_value: 100
+    step: 1
+    restore_value: true    
+    initial_value: 0
+    optimistic: true
+    on_value:
+        - script.execute:
+            id: ctrlLoop      
+
+  - platform: template
+    id: maxTemp
+    name: Maximum Temperature
+    min_value: 40
+    max_value: 90
+    step: 1
+    restore_value: true    
+    initial_value: 55
+    optimistic: true
+    on_value:
+        - script.execute:
+            id: ctrlLoop      
+    
+  - platform: template
+    id: minTemp
+    name: Minimum Temperature
+    min_value: 0
+    max_value: 90
+    step: 1
+    restore_value: true  
+    initial_value: 0
+    optimistic: true
+    on_value:
+        - script.execute:
+            id: ctrlLoop      
+    
+  - platform: template
+    id: tempHysteresis
+    name: Temperature hysteresis
+    min_value: 1
+    max_value: 20
+    step: 1
+    restore_value: true  
+    initial_value: 5    
+    optimistic: true
+    on_value:
+        - script.execute:
+            id: ctrlLoop      
+    
+     
+    
+  - platform: template
+    id: switchUpDelay
+    name: Switch Up Delay
+    min_value: 10
+    max_value: 3600
+    step: 1
+    restore_value: true  
+    initial_value: 120     
+    optimistic: true  
+    on_value:
+        - script.execute:
+            id: ctrlLoop      
+
+  - platform: template
+    id: manualMode
+    name: Manual Mode Value
+    min_value: 0
+    max_value: 100
+    step: 1
+    restore_value: true  
+    initial_value: 0     
+    optimistic: true   
+    on_value:
+        - script.execute:
+            id: ctrlLoop      
+    
+  - platform: template
+    id: allowedPowerExport
+    name: Allowed power to export
+    min_value: 50
+    max_value: 2000
+    step: 1
+    restore_value: true  
+    initial_value: 500     
+    optimistic: true
+    on_value:
+        - script.execute:
+            id: ctrlLoop     
+    
+select:
+  - platform: template
+    name: "Select Mode"
+    id: select_mode
+    options:
+     - "Auto"
+     - "Manual"
+    initial_option: "Manual"
+    optimistic: true
+    restore_value: yes  
+    on_value:
+        - script.execute:
+            id: ctrlLoop      
+ 
+script:
+- id: ctrlLoop
+  then:
+    - lambda: |-
+        const uint32_t cmillis = millis();
+        const float vpwr = id(esp_pwr_combi).state + id(allowedPowerExport).state;
+        const float vpwrAbs = std::abs(vpwr);
+        static float cHysteresis = 0.0, minPwr = vpwr, maxPwr = vpwr;
+        static uint32_t stableTimer = 0;
+        
+        if( vpwr >= 0 ){
+            stableTimer = cmillis;
+        }else{        
+            //Determine min and max power between switch cycles
+            if((stableTimer+(id(switchUpDelay).state*1000)) > cmillis){
+                if(vpwrAbs < minPwr)
+                    minPwr = vpwrAbs;
+                if(vpwrAbs > maxPwr)
+                    maxPwr = vpwrAbs;
+            }
+        }
+        
+        if(std::isnan(minPwr))
+            minPwr = vpwrAbs;
+            
+        if(std::isnan(maxPwr))
+            maxPwr = vpwrAbs;            
+        
+        if(id(select_mode).state == "Auto"){                
+            //Check for min Temperature
+            if(id(lowTempMinPwrLvl).state != 0 && id(temperature).state < id(minTemp).state){
+                id(pthc_output).set_level(id(lowTempMinPwrLvl).state/100);  
+            }else{
+                if(id(temperature).state < (id(maxTemp).state-cHysteresis)){
+                    const float maxHeatPwr = id(pthc_output).get_max_pwr();
+                    cHysteresis = 0.0f;
+                    
+                    //Power is needed from grid reduce heating power
+                    if( id(esp_pwr_combi).state >= 0 ){
+                        const float rp = vpwr/maxHeatPwr;
+                        const float cp = id(pthc_output).get_current_pwr()/maxHeatPwr;
+                        float lvl = cp-rp;
+                        if(lvl < 0)
+                            lvl = 0;                    
+                        id(pthc_output).set_level(lvl);
+                    }
+                    
+                    //Power is available for heating
+                    if( vpwr < 0  && (stableTimer+(id(switchUpDelay).state*1000)) < cmillis ){
+                        const float ip = minPwr/maxHeatPwr;
+                        const float cp = id(pthc_output).get_current_pwr()/maxHeatPwr;
+                        float lvl = cp+ip;
+                        if(lvl > 1.0)
+                            lvl = 1.0;
+                        id(pthc_output).set_level(lvl);
+                        
+                        //delay next switch
+                        stableTimer = cmillis;
+                        //Reset min/max pwr
+                        maxPwr = minPwr = vpwrAbs;
+                    }
+                    
+                
+                }else{
+                    id(pthc_output).set_level(0);  
+                    cHysteresis = id(tempHysteresis).state;
+                }
+
+            }
+        }
+        else{
+            if(id(temperature).state < (id(maxTemp).state-cHysteresis)){
+                cHysteresis = 0.0f;
+                float lvl = id(manualMode).state / 100.0f;
+                id(pthc_output).set_level(lvl);
+            }else{
+                    id(pthc_output).set_level(0);  
+                    cHysteresis = id(tempHysteresis).state;
+            }
+        }

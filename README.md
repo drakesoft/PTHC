@@ -20,6 +20,8 @@ Welcome to the PTHC project! This open-source project is based on ESPHome and pr
 
 - Expansion Ports: Additional ports are available for custom extensions, such as connecting an optical reading head from a power meter, allowing for further customization and functionality.
 
+- Example with PV self consumption optimized power controller
+
 ## Future Plans
 
 In the future, we plan to implement optional wave packet control to provide even more power levels.

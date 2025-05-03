@@ -425,7 +425,7 @@ void PTHCFloatOutput::loop() {
     uint32_t cmillis = millis();
     static uint32_t last_millis_val = 0;
     static uint32_t overrun_counter_ts = 0;
-    //Erkenne Überlauf und zähle overrun_counter hoch
+    //Check for overrun an increase high bytes
     if(cmillis < last_millis_val){
         overrun_counter_ts++;
     }        
@@ -713,6 +713,13 @@ void PTHCFloatOutput::loop() {
 
 void PTHCFloatOutput::write_state(float state){
     uint8_t i;
+    static float lastValue = 0.0f;
+    
+    if(state == lastValue)
+        return;
+    
+    lastValue = state;
+    
     ESP_LOGCONFIG(TAG, "Change State to %f", state);
     for(i=PWR_STEPS-1;i;i--){
         if(relCfg[i].pwr <= state){
@@ -724,7 +731,7 @@ void PTHCFloatOutput::write_state(float state){
         ESP_LOGE(TAG, "Last Change State not complete");
     }
     
-    if(i <= 13){
+    if(i < PWR_STEPS){
         ESP_LOGI(TAG, "Change State to %i", i);
         this->pwrLevelReq = i;
     }

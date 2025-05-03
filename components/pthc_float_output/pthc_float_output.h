@@ -95,7 +95,10 @@ public:
     void set_rel_on_delay_us(const std::array<int, 8>& delays) { this->rel_on_delay_us = delays; }
     void set_rel_off_delay_us(const std::array<int, 8>& delays) { this->rel_off_delay_us = delays; }
     
-    
+    int get_max_pwr(void) { return this->max_pwr; }
+    int get_current_switch_state(void) { return this->cPwrLevel; }
+    float get_current_pwr(void) { return max_pwr*relCfg[this->cPwrLevel].pwr; }
+        
     uint32_t boost_freq = 0;
     uint32_t boost_duty = 0;
     uint8_t boost_override_settings = 0; 
