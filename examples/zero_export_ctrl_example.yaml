@@ -1,7 +1,10 @@
 esphome:
   name: pthc
-  platform: ESP32
+
+esp32:
   board: esp32dev
+  flash_size: 4MB
+  variant: ESP32
 
 external_components:    
   - source:
@@ -38,6 +41,14 @@ web_server:
   include_internal: true    
     
 udp:
+  - id: udp_meterinput
+
+packet_transport:
+  - platform: udp
+    id: transport_input
+    udp_id: udp_meterinput
+    providers:
+      - name: szb
 
 sensor:
   - platform: dallas_temp
@@ -49,7 +60,7 @@ sensor:
             id: ctrlLoop     
     
 #Get the current meter value from another ESP32 in this case    
-  - platform: udp
+  - platform: packet_transport
     provider: szb
     id: esp_pwr_combi 
     on_value:
@@ -186,6 +197,12 @@ script:
         const float vpwrAbs = std::abs(vpwr);
         static float cHysteresis = 0.0, minPwr = vpwr, maxPwr = vpwr;
         static uint32_t stableTimer = 0;
+        
+        if (std::isnan(id(temperature).state)) {
+            id(pthc_output).set_level(0);  
+            ESP_LOGW("ctrlLoop", "Temperature reading is NaN, skipping control loop and set power to zero");
+            return;
+        }
         
         if( vpwr >= 0 ){
             stableTimer = cmillis;
