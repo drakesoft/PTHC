@@ -1,3 +1,27 @@
+/*
+ * PTHC - Power To Heating Controller
+ * 
+ * Copyright (C) 2023-2025 draketronic / Maximilian Niedernhuber
+ * 
+ * This file is part of the PTHC project.
+ * 
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+ * 
+ * Author: Maximilian Niedernhuber
+ * Project: https://github.com/drakesoft/PTHC
+ */
+
 #include "esphome/core/log.h"
 #include "pthc_float_output.h"
 #include "hal/mcpwm_ll.h"
@@ -253,9 +277,6 @@ void PTHCFloatOutput::setup(){
     }        
     
 
-    
-
-        
 #if 1
     
     for(uint8_t x=0;x<2;x++){
