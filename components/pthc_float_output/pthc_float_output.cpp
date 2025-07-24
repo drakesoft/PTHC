@@ -27,6 +27,12 @@
 #include "hal/mcpwm_ll.h"
 #include "soc/mcpwm_reg.h"
 
+#if ESP_IDF_VERSION >= ESP_IDF_VERSION_VAL(5, 0, 0)
+#define MCPWM_TIMER_EVENT_PEAK MCPWM_TIMER_EVENT_FULL
+#define MCPWM_TIMER_EVENT_ZERO MCPWM_TIMER_EVENT_EMPTY
+#define mcpwm_ll_timer_set_execute_command  mcpwm_ll_timer_set_start_stop_command
+#endif
+
 extern void mcpwm_module_enable(mcpwm_unit_t mcpwm_num);
 
 namespace esphome {
