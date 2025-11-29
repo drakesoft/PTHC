@@ -1,11 +1,19 @@
 esphome:
   name: pthc
+<<<<<<< HEAD
+=======
 
 esp32:
   board: esp32dev
   flash_size: 4MB
   variant: ESP32
+>>>>>>> cfdf1c9b23bf0bd29c79bd115b16f3ce04cf98d1
 
+esp32:
+    board: esp32dev
+    flash_size: 4MB
+    variant: ESP32
+  
 external_components:    
   - source:
       type: git

@@ -1,8 +1,11 @@
 esphome:
   name: pthc_controller
-  platform: ESP32
-  board: esp32dev
 
+esp32:
+    board: esp32dev
+    flash_size: 4MB
+    variant: ESP32  
+  
 external_components:
   - source:
       type: git
