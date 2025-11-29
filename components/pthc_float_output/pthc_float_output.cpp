@@ -1,5 +1,5 @@
 /*
- * PTHC - Power To Heating Controller
+ * PTHC - Power To Heat Controller
  * 
  * Copyright (C) 2023-2025 draketronic / Maximilian Niedernhuber
  * 
@@ -32,6 +32,7 @@
 #define MCPWM_TIMER_EVENT_ZERO MCPWM_TIMER_EVENT_EMPTY
 #define mcpwm_ll_timer_set_execute_command  mcpwm_ll_timer_set_start_stop_command
 #endif
+
 
 extern void mcpwm_module_enable(mcpwm_unit_t mcpwm_num);
 
@@ -102,6 +103,9 @@ void PTHCFloatOutput::setup(){
     }else{
         phaseAngle = phaseAngleCW;
     }
+
+    rel_on_delay_us = {3580, 3580, 3580, 3580, 3580, 2060, 2060, 0};
+    rel_off_delay_us = {980, 980, 980, 980, 980, 920, 920, 0};
     
     esp_err_t err = 0;
     
@@ -232,7 +236,7 @@ void PTHCFloatOutput::setup(){
     if(err != ESP_OK){
         ESP_LOGCONFIG(TAG, "MCPWM1 Capture enable error");
     }
-     
+
     //just for enable modules
     capCfg.capture_cb = 0;
     capCfg.cap_edge = (mcpwm_capture_on_edge_t)0;
@@ -268,7 +272,7 @@ void PTHCFloatOutput::setup(){
     if(err != ESP_OK){
         ESP_LOGCONFIG(TAG, "MCPWM0 Sync0 enable error");
     }
-     
+
     err = mcpwm_sync_configure(MCPWM_UNIT_1, MCPWM_TIMER_0, &syncCfg);
     if(err != ESP_OK){
         ESP_LOGCONFIG(TAG, "MCPWM1 Sync0 enable error");
@@ -287,7 +291,7 @@ void PTHCFloatOutput::setup(){
     
     for(uint8_t x=0;x<2;x++){
         ESP_LOGCONFIG(TAG, "Setup MCPWM%i",x);
-        mcpwm_ll_group_set_clock_prescale(MCPWM_LL_GET_HW(x), 159);
+        mcpwm_ll_group_set_clock_prescale(x, 159);
         uint8_t maxTimer = 3;
         if(x == 0){
             maxTimer = 1;
@@ -334,7 +338,7 @@ void PTHCFloatOutput::setup(){
     ESP_LOGCONFIG(TAG, "MCPWM Setup Cmpl.");
     
     cState = IDLE;
- 
+
 }
 
 
@@ -342,21 +346,22 @@ uint32_t PTHCFloatOutput::calculateTimerValue(uint8_t state, uint8_t phaseAngleI
     int32_t value;
     
     value = (halfWaveTimeUs*phaseAngle[phaseAngleIdx])/180;
-    
+
     if(state)
         value -= rel_on_delay_us[pin];
     else
         value -= rel_off_delay_us[pin];
-    
+
     //Add half of zeroCrossSignalDuration because real zero cross is in center of the Signal
     value += (zcdData.zeroCrossSignalDuration>>1);
-    
+
+
     const int32_t limit = halfWaveTimeUs*2;
     
     while(value < limit){
         value += halfWaveTimeUs;        
     }
-    
+
     //Use value nearest to two halfwaves
     if(std::abs(value-limit) > std::abs(value-limit- halfWaveTimeUs)){
         value -= halfWaveTimeUs;   
@@ -465,9 +470,7 @@ void PTHCFloatOutput::loop() {
     static uint64_t timerStopCounter = 0;
     static uint64_t delayedPwrLevelReqTimer = 0;
     
-    static int8_t delayedPwrLevelReq = -1;
-    
-   
+
     //check for delyed pwr request
     if(this->cState == WAIT_FOR_DELAYED_REQ && delayedPwrLevelReqTimer < ts){
         this->cState = IDLE;
@@ -563,7 +566,7 @@ void PTHCFloatOutput::loop() {
                 
                 this->cState = WAIT_FOR_BOOST;
             }else{
-               this->cState = LOAD_TIMER_AND_WAIT_FOR_NET_SYNC;
+                this->cState = LOAD_TIMER_AND_WAIT_FOR_NET_SYNC;
             }                
             //Enable ZCD for sync with mains freq.
             zcdData.zcd_state = zcd_calibration_state_t::START_MEASURE;
@@ -613,7 +616,7 @@ void PTHCFloatOutput::loop() {
                 ESP_LOGE(TAG, "Error updating gpio");
             }    
         }
- 
+
 
         uint8_t sw_off_count = 0;
         uint32_t maxSwitchOffTime = 0;
@@ -623,26 +626,22 @@ void PTHCFloatOutput::loop() {
                 //Check for Switch Off
                 if((cRelState & sv) && (!(nRelState & sv)) && (cRelCfg[u] & sv) ){
                     uint32_t timerValue = calculateTimerValue(0, u, i);
-                    //delay switch off
-                    if(cRelCfg[u] & DELAY_SW_OFF){
+                    
+                    if((i+1) == ((cRelCfg[u]>>ADD_DELAY_OFF_NR_SHIFT)&0xF) || (ADD_TO_ALL+1) == ((cRelCfg[u]>>ADD_DELAY_OFF_NR_SHIFT)&0xF)){
                         timerValue += (halfWaveTimeUs*4);
-                        ESP_LOGI(TAG, "Delayed switch off"); 
-                    }
-                    if(cRelCfg[u] & STAGGERED_SWITCH_OFF){
-                        timerValue += (halfWaveTimeUs*(sw_off_count*2+4));
-                        ESP_LOGI(TAG, "Staggered switch off"); 
+                        ESP_LOGI(TAG, "Add two cycle off"); 
                     }
                     
-                    if(cRelCfg[u] & ADD_TWO_CYLCE_MARKER_OFF && i == ((cRelCfg[u]>>ADD_TWO_CYLCE_NR_SHIFT)&0x7)){
-                        timerValue += (halfWaveTimeUs*6);
-                        ESP_LOGI(TAG, "Add two cycle"); 
-                    }
-                    
+                    if((i+1) == ((cRelCfg[u]>>ADD2_DELAY_OFF_NR_SHIFT)&0xF) || (ADD_TO_ALL+1) == ((cRelCfg[u]>>ADD2_DELAY_OFF_NR_SHIFT)&0xF)){
+                        timerValue += (halfWaveTimeUs*4);
+                        ESP_LOGI(TAG, "Add again two cycle off"); 
+                    }                    
+
                     if(timerValue > (maxSwitchOffTime + rel_off_delay_us[i])){
                         maxSwitchOffTime = (timerValue + rel_off_delay_us[i]);
                     }
                     
-                    timerValue -= 500; //Switch a bit bevore zero cross
+                    timerValue -= 500; //Switch a bit before zero cross
                     
                     setupTimer(i,0,timerValue);
                     sw_off_count++;
@@ -666,20 +665,15 @@ void PTHCFloatOutput::loop() {
                 if((!(cRelState & sv)) && (nRelCfg[u] & sv)){
                     uint32_t timerValue = calculateTimerValue(1, u, i);
                     
-                    if(nRelCfg[u] & SWITCH_RELAY_LAST){
+                    if(( (i+1) == ((nRelCfg[u]>>ADD_DELAY_ON_NR_SHIFT)&0xF) || (ADD_TO_ALL+1) == ((nRelCfg[u]>>ADD_DELAY_ON_NR_SHIFT)&0xF) )){
                         timerValue += (halfWaveTimeUs*4);
-                        ESP_LOGI(TAG, "Delay Switch On"); 
-                    }  
-                    
-                    if(nRelCfg[u] & ADD_TWO_CYLCE_MARKER_ON && i == ((nRelCfg[u]>>ADD_TWO_CYLCE_NR_SHIFT)&0x7)){
-                        timerValue += (halfWaveTimeUs*4);
-                        ESP_LOGI(TAG, "Add two cycle"); 
+                        ESP_LOGI(TAG, "Add two cycle On"); 
                     }                    
                     
-                    /*if(phaseAngleCount){
-                        timerValue += (halfWaveTimeUs*4*phaseAngleCount);
-                        ESP_LOGI(TAG, "Add %i cycle for different Phaseangle", phaseAngleCount*2);
-                    }*/
+                    if(( (i+1) == ((nRelCfg[u]>>ADD2_DELAY_ON_NR_SHIFT)&0xF) || (ADD_TO_ALL+1) == ((nRelCfg[u]>>ADD2_DELAY_ON_NR_SHIFT)&0xF) )){
+                        timerValue += (halfWaveTimeUs*4);
+                        ESP_LOGI(TAG, "Add again two cycle On"); 
+                    }              
                     
                     timerValue += onDelayAdder;
                     
@@ -694,7 +688,7 @@ void PTHCFloatOutput::loop() {
         }        
         
         timerStopCounter = ts + 100;
-               
+
         cState = WAIT_FOR_DISABLE_TIMER;
         
         zcdData.zcd_state = zcd_calibration_state_t::IDLE;
@@ -730,7 +724,6 @@ void PTHCFloatOutput::loop() {
             delayedPwrLevelReqTimer = ts + 1000; 
             this->cState = WAIT_FOR_DELAYED_REQ;
         }
-         
         
         ESP_LOGI(TAG, "Disable Boost, Switch finished");
     }
@@ -747,20 +740,23 @@ void PTHCFloatOutput::write_state(float state){
     
     lastValue = state;
     
-    ESP_LOGCONFIG(TAG, "Change State to %f", state);
     for(i=PWR_STEPS-1;i;i--){
         if(relCfg[i].pwr <= state){
             break;            
         }        
     }
-        
-    if(this->cState != IDLE){
-        ESP_LOGE(TAG, "Last Change State not complete");
-    }
     
     if(i < PWR_STEPS){
-        ESP_LOGI(TAG, "Change State to %i", i);
-        this->pwrLevelReq = i;
+        if(this->cPwrLevel != i){
+            ESP_LOGI(TAG, "Change State to %i (%f)", i, state);
+            if(this->cState == IDLE){
+                this->pwrLevelReq = i;
+            }
+            else{
+                ESP_LOGE(TAG, "Last Change State not complete. Switch as soon as possible.");
+                delayedPwrLevelReq = i;
+            }
+        }
     }
     else{
         ESP_LOGE(TAG, "wrong state: %i", i);
